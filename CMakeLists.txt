@@ -341,6 +341,8 @@ endif()
 option(XZ_NLS "Native Language Support (translated messages and man pages)"
        "${XZ_NLS_DEFAULT}")
 
+option(XZ_ENABLE_INSTALL "Install applications and library" OFF)
+
 if(XZ_NLS)
     if(NOT Intl_FOUND)
         message(FATAL_ERROR "Native language support (NLS) was enabled but "
@@ -1559,46 +1561,46 @@ endif()
 
 configure_file(src/liblzma/liblzma.pc.in liblzma.pc @ONLY)
 
+if(XZ_ENABLE_INSTALL)
+	# Install the library binary. The INCLUDES specifies the include path that
+	# is exported for other projects to use but it doesn't install any files.
+	install(TARGETS liblzma EXPORT liblzmaTargets
+			RUNTIME  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+					 COMPONENT liblzma_Runtime
+			LIBRARY  DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+					 COMPONENT liblzma_Runtime
+					 NAMELINK_COMPONENT liblzma_Development
+			ARCHIVE  DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+					 COMPONENT liblzma_Development
+			INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
-# Install the library binary. The INCLUDES specifies the include path that
-# is exported for other projects to use but it doesn't install any files.
-install(TARGETS liblzma EXPORT liblzmaTargets
-        RUNTIME  DESTINATION "${CMAKE_INSTALL_BINDIR}"
-                 COMPONENT liblzma_Runtime
-        LIBRARY  DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-                 COMPONENT liblzma_Runtime
-                 NAMELINK_COMPONENT liblzma_Development
-        ARCHIVE  DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-                 COMPONENT liblzma_Development
-        INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+	# Install the liblzma API headers. These use a subdirectory so
+	# this has to be done as a separate step.
+	install(DIRECTORY src/liblzma/api/
+			COMPONENT liblzma_Development
+			DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+			FILES_MATCHING PATTERN "*.h")
 
-# Install the liblzma API headers. These use a subdirectory so
-# this has to be done as a separate step.
-install(DIRECTORY src/liblzma/api/
-        COMPONENT liblzma_Development
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-        FILES_MATCHING PATTERN "*.h")
+	# Install the CMake files that other packages can use to find liblzma.
+	set(XZ_INSTALL_CMAKEDIR
+		"${CMAKE_INSTALL_LIBDIR}/cmake/liblzma"
+		CACHE STRING "Path to liblzma's .cmake files")
 
-# Install the CMake files that other packages can use to find liblzma.
-set(XZ_INSTALL_CMAKEDIR
-    "${CMAKE_INSTALL_LIBDIR}/cmake/liblzma"
-    CACHE STRING "Path to liblzma's .cmake files")
+	install(EXPORT liblzmaTargets
+			NAMESPACE liblzma::
+			FILE liblzma-targets.cmake
+			DESTINATION "${XZ_INSTALL_CMAKEDIR}"
+			COMPONENT liblzma_Development)
 
-install(EXPORT liblzmaTargets
-        NAMESPACE liblzma::
-        FILE liblzma-targets.cmake
-        DESTINATION "${XZ_INSTALL_CMAKEDIR}"
-        COMPONENT liblzma_Development)
+	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/liblzma-config.cmake"
+				  "${CMAKE_CURRENT_BINARY_DIR}/liblzma-config-version.cmake"
+			DESTINATION "${XZ_INSTALL_CMAKEDIR}"
+			COMPONENT liblzma_Development)
 
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/liblzma-config.cmake"
-              "${CMAKE_CURRENT_BINARY_DIR}/liblzma-config-version.cmake"
-        DESTINATION "${XZ_INSTALL_CMAKEDIR}"
-        COMPONENT liblzma_Development)
-
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/liblzma.pc"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
-        COMPONENT liblzma_Development)
-
+	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/liblzma.pc"
+			DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+			COMPONENT liblzma_Development)
+endif()
 
 #############################################################################
 # Helper functions for installing files
@@ -1966,14 +1968,16 @@ if(XZ_TOOL_LZMAINFO AND HAVE_DECODERS)
                 LOCALEDIR="${LOCALEDIR_DEFINITION}"
         )
     endif()
+	
+	if(XZ_ENABLE_INSTALL)
+		install(TARGETS lzmainfo
+				RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+						COMPONENT lzmainfo_Runtime)
 
-    install(TARGETS lzmainfo
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-                    COMPONENT lzmainfo_Runtime)
-
-    if(UNIX)
-        my_install_man(lzmainfo_Documentation src/lzmainfo/lzmainfo.1 "")
-    endif()
+		if(UNIX)
+			my_install_man(lzmainfo_Documentation src/lzmainfo/lzmainfo.1 "")
+		endif()
+	endif()
 endif()
 
 
@@ -2156,14 +2160,16 @@ this many MiB of RAM if xz cannot determine the amount at runtime")
             gettext_process_po_files("${LANG}" ALL
                     PO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/po/${LANG}.po")
         endforeach()
-
-        foreach(LANG IN LISTS LINGUAS)
-            install(
-                FILES "${CMAKE_CURRENT_BINARY_DIR}/${LANG}.gmo"
-                DESTINATION "${CMAKE_INSTALL_LOCALEDIR}/${LANG}/LC_MESSAGES"
-                RENAME "${TRANSLATION_DOMAIN}.mo"
-                COMPONENT xz_Runtime)
-        endforeach()
+		
+		if(XZ_ENABLE_INSTALL)
+			foreach(LANG IN LISTS LINGUAS)
+				install(
+					FILES "${CMAKE_CURRENT_BINARY_DIR}/${LANG}.gmo"
+					DESTINATION "${CMAKE_INSTALL_LOCALEDIR}/${LANG}/LC_MESSAGES"
+					RENAME "${TRANSLATION_DOMAIN}.mo"
+					COMPONENT xz_Runtime)
+			endforeach()
+		endif()
     endif()
 
     # This command must be before the symlink creation to keep things working
@@ -2183,9 +2189,11 @@ this many MiB of RAM if xz cannot determine the amount at runtime")
     # Our installation order must be such that when a symbolic link is created
     # its target must already exists. There is no race condition for parallel
     # builds because the generated cmake_install.cmake executes serially.
-    install(TARGETS xz
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-                    COMPONENT xz_Runtime)
+	if(XZ_ENABLE_INSTALL)
+		install(TARGETS xz
+				RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+						COMPONENT xz_Runtime)
+	endif()
 
     if(UNIX)
         option(XZ_TOOL_SYMLINKS "Create unxz and xzcat symlinks" ON)
@@ -2209,12 +2217,14 @@ this many MiB of RAM if xz cannot determine the amount at runtime")
         # to execute files without the .exe suffix but not outside
         # (like in Command Prompt). Omitting the suffix matches
         # what configure.ac has done for many years though.
-        my_install_symlinks(xz_Runtime "${CMAKE_INSTALL_BINDIR}"
-                            "xz${CMAKE_EXECUTABLE_SUFFIX}" "" "${XZ_LINKS}")
+		if(XZ_ENABLE_INSTALL)
+			my_install_symlinks(xz_Runtime "${CMAKE_INSTALL_BINDIR}"
+								"xz${CMAKE_EXECUTABLE_SUFFIX}" "" "${XZ_LINKS}")
 
-        # Install the man pages and (optionally) their symlinks
-        # and translations.
-        my_install_man(xz_Documentation src/xz/xz.1 "${XZ_LINKS}")
+			# Install the man pages and (optionally) their symlinks
+			# and translations.
+			my_install_man(xz_Documentation src/xz/xz.1 "${XZ_LINKS}")
+		endif()
     endif()
 endif()
 
@@ -2292,29 +2302,31 @@ xzdiff, xzgrep, xzmore, xzless, and their symlinks" ON)
     unset(enable_path_for_scripts)
 
     if(ENABLE_SCRIPTS)
-        my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
-                            xzdiff "" "${XZDIFF_LINKS}")
+		if(XZ_ENABLE_INSTALL)
+			my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
+								xzdiff "" "${XZDIFF_LINKS}")
 
-        my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
-                            xzgrep "" "${XZGREP_LINKS}")
+			my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
+								xzgrep "" "${XZGREP_LINKS}")
 
-        my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
-                            xzmore "" "${XZMORE_LINKS}")
+			my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
+								xzmore "" "${XZMORE_LINKS}")
 
-        my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
-                            xzless "" "${XZLESS_LINKS}")
+			my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
+								xzless "" "${XZLESS_LINKS}")
 
-        my_install_man(scripts_Documentation
-                       src/scripts/xzdiff.1 "${XZDIFF_LINKS}")
+			my_install_man(scripts_Documentation
+						   src/scripts/xzdiff.1 "${XZDIFF_LINKS}")
 
-        my_install_man(scripts_Documentation
-                       src/scripts/xzgrep.1 "${XZGREP_LINKS}")
+			my_install_man(scripts_Documentation
+						   src/scripts/xzgrep.1 "${XZGREP_LINKS}")
 
-        my_install_man(scripts_Documentation
-                       src/scripts/xzmore.1 "${XZMORE_LINKS}")
+			my_install_man(scripts_Documentation
+						   src/scripts/xzmore.1 "${XZMORE_LINKS}")
 
-        my_install_man(scripts_Documentation
-                       src/scripts/xzless.1 "${XZLESS_LINKS}")
+			my_install_man(scripts_Documentation
+						   src/scripts/xzless.1 "${XZLESS_LINKS}")
+		endif()
     endif()
 endif()
 
@@ -2354,27 +2366,29 @@ endif()
 
 option(XZ_DOC "Install basic documentation, examples, and license files" ON)
 if(XZ_DOC)
-    install(DIRECTORY doc/examples
-            DESTINATION "${CMAKE_INSTALL_DOCDIR}"
-            COMPONENT liblzma_Documentation)
+	if(XZ_ENABLE_INSTALL)
+		install(DIRECTORY doc/examples
+				DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+				COMPONENT liblzma_Documentation)
 
-    # GPLv2 applies to the scripts. If GNU getopt_long is used then
-    # LGPLv2.1 applies to the command line tools but, using the
-    # section 3 of LGPLv2.1, GNU getopt_long can be handled as GPLv2 too.
-    # Thus GPLv2 should be enough here.
-    install(FILES AUTHORS
-                  COPYING
-                  COPYING.0BSD
-                  COPYING.GPLv2
-                  NEWS
-                  README
-                  THANKS
-                  doc/faq.txt
-                  doc/history.txt
-                  doc/lzma-file-format.txt
-                  doc/xz-file-format.txt
-            DESTINATION "${CMAKE_INSTALL_DOCDIR}"
-            COMPONENT Documentation)
+		# GPLv2 applies to the scripts. If GNU getopt_long is used then
+		# LGPLv2.1 applies to the command line tools but, using the
+		# section 3 of LGPLv2.1, GNU getopt_long can be handled as GPLv2 too.
+		# Thus GPLv2 should be enough here.
+		install(FILES AUTHORS
+					  COPYING
+					  COPYING.0BSD
+					  COPYING.GPLv2
+					  NEWS
+					  README
+					  THANKS
+					  doc/faq.txt
+					  doc/history.txt
+					  doc/lzma-file-format.txt
+					  doc/xz-file-format.txt
+				DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+				COMPONENT Documentation)
+	endif()
 endif()
 
 
